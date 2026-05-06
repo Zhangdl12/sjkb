@@ -20,7 +20,7 @@ class DataLoadError(Exception):
     """读取原始数据失败。"""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True) 
 class SourceTables:
     """承载三张原始工作表的数据对象。"""
 
@@ -55,10 +55,10 @@ def _normalize_excel_source(file_source: str | Path | bytes | BinaryIO):
         if not path.exists():
             raise DataLoadError(f"找不到文件 `{path.name}`，请确认文件名和路径。")
         return path
-
+    
     if isinstance(file_source, bytes):
         return BytesIO(file_source)
-
+    
     if hasattr(file_source, "seek"):
         file_source.seek(0)
         return file_source

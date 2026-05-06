@@ -1,0 +1,2 @@
+"""Example dashboard package."""
+
