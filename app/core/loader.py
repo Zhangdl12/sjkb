@@ -1,4 +1,4 @@
-"""Generic Excel loading helpers."""
+"""通用 Excel 加载能力。"""
 
 from collections.abc import Mapping, Sequence
 from io import BytesIO
@@ -10,14 +10,14 @@ import streamlit as st
 
 
 class DataLoadError(Exception):
-    """Raised when workbook data cannot be loaded."""
+    """工作簿数据加载失败时抛出的异常。"""
 
 
 def load_excel_sheets(
     file_source: str | Path | bytes | BinaryIO,
     sheet_mapping: Mapping[str, str] | Sequence[str],
 ) -> dict[str, pd.DataFrame]:
-    """Load one or more named sheets from an Excel source."""
+    """从 Excel 数据源中读取一个或多个指定工作表。"""
 
     excel_source = _normalize_excel_source(file_source)
     mapping = _normalize_sheet_mapping(sheet_mapping)
@@ -38,7 +38,7 @@ def load_shared_workbook(
     source_name: str,
     source_token: str,
 ) -> dict[str, pd.DataFrame]:
-    """Load and cache all sheets from the shared workbook."""
+    """加载并缓存共享工作簿中的全部工作表。"""
 
     _ = source_name
     _ = source_token
@@ -57,7 +57,7 @@ def select_required_sheets(
     workbook: dict[str, pd.DataFrame],
     sheet_mapping: Mapping[str, str] | Sequence[str],
 ) -> dict[str, pd.DataFrame]:
-    """Select required sheets from a preloaded workbook by alias mapping."""
+    """按别名映射从已加载工作簿中选出当前看板需要的工作表。"""
 
     mapping = _normalize_sheet_mapping(sheet_mapping)
     missing_sheets = [
@@ -73,7 +73,7 @@ def select_required_sheets(
 
 
 def _normalize_excel_source(file_source: str | Path | bytes | BinaryIO):
-    """Normalize a path, upload, or stream into a pandas-readable source."""
+    """把路径、上传文件或流对象归一化为 pandas 可读取的数据源。"""
 
     if isinstance(file_source, (str, Path)):
         path = Path(file_source)
@@ -94,7 +94,7 @@ def _normalize_excel_source(file_source: str | Path | bytes | BinaryIO):
 def _normalize_sheet_mapping(
     sheet_mapping: Mapping[str, str] | Sequence[str],
 ) -> dict[str, str]:
-    """Normalize sheet definitions into an alias-to-sheet-name mapping."""
+    """把工作表定义归一化为“别名 -> 工作表名”的映射。"""
 
     if isinstance(sheet_mapping, Mapping):
         return dict(sheet_mapping)

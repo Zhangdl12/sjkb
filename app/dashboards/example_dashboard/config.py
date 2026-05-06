@@ -1,4 +1,4 @@
-"""Static content config for dashboard onboarding example."""
+"""看板接入示例页的静态文案配置。"""
 
 
 EXAMPLE_DASHBOARD_TITLE = "看板开发示例"

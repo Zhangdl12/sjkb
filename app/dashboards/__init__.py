@@ -1,2 +1,1 @@
-"""Dashboard-specific configuration packages."""
-
+"""各业务看板的配置与实现包。"""

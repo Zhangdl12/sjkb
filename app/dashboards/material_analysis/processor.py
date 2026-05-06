@@ -1,4 +1,4 @@
-"""Data processing for the material analysis dashboard."""
+"""素材分析看板的数据加工逻辑。"""
 
 import numpy as np
 import pandas as pd
@@ -8,13 +8,13 @@ from app.dashboards.material_analysis.loader import SourceTables
 
 
 class DataProcessingError(Exception):
-    """Raised when source data cannot be transformed into the analysis table."""
+    """源数据无法加工成分析宽表时抛出的异常。"""
 
 
 def build_analysis_dataset(
     tables: SourceTables | dict[str, pd.DataFrame], config: AppConfig
 ) -> pd.DataFrame:
-    """Build the analysis-ready dataset from the uploaded workbook."""
+    """把上传工作簿加工成素材分析使用的宽表。"""
 
     try:
         source_tables = _normalize_source_tables(tables)
@@ -90,7 +90,7 @@ def build_analysis_dataset(
 def _normalize_source_tables(
     tables: SourceTables | dict[str, pd.DataFrame],
 ) -> SourceTables:
-    """Support both legacy SourceTables and generic sheet mappings."""
+    """兼容 SourceTables 对象和通用字典映射两种输入。"""
 
     if isinstance(tables, SourceTables):
         return tables
@@ -103,7 +103,7 @@ def _normalize_source_tables(
 
 
 def _format_day_value(value: pd.Timestamp) -> str | float:
-    """Format day values as `YYYY/M/D` strings for filtering."""
+    """把日期格式化为筛选使用的 `YYYY/M/D` 字符串。"""
 
     if pd.isna(value):
         return np.nan

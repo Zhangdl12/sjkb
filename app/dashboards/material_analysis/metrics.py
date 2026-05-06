@@ -1,4 +1,4 @@
-"""Metric calculations for the material analysis dashboard."""
+"""素材分析看板的指标计算逻辑。"""
 
 from dataclasses import dataclass
 
@@ -9,7 +9,7 @@ from app.dashboards.material_analysis.config import AppConfig
 
 @dataclass(frozen=True)
 class SummaryMetrics:
-    """Summary metrics shown at the top of the dashboard."""
+    """页面顶部展示的汇总指标。"""
 
     impressions: float
     clicks: float
@@ -22,13 +22,13 @@ class SummaryMetrics:
 
 
 def safe_divide(numerator: float, denominator: float) -> float:
-    """Safely divide and return 0 for empty denominators."""
+    """安全除法：分母为空或为 0 时返回 0。"""
 
     return numerator / denominator if denominator and denominator != 0 else 0
 
 
 def calculate_summary_metrics(df: pd.DataFrame, config: AppConfig) -> SummaryMetrics:
-    """Calculate summary metrics from the filtered dataset."""
+    """根据筛选后的数据计算顶部汇总指标。"""
 
     impressions = df[config.impressions_column].sum()
     clicks = df[config.clicks_column].sum()
@@ -51,7 +51,7 @@ def calculate_summary_metrics(df: pd.DataFrame, config: AppConfig) -> SummaryMet
 def build_pivot_table(
     df: pd.DataFrame, group_by: list[str], config: AppConfig
 ) -> pd.DataFrame:
-    """Build the grouped analysis table for the current dashboard."""
+    """构建当前看板使用的分组透视表。"""
 
     pivot_df = (
         df.groupby(group_by)

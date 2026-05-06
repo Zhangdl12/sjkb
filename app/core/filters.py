@@ -1,4 +1,4 @@
-"""Generic sidebar filter helpers."""
+"""通用侧边栏筛选能力。"""
 
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -10,7 +10,7 @@ import streamlit as st
 
 @dataclass(frozen=True)
 class FilterField:
-    """Definition of a single sidebar filter widget."""
+    """单个侧边栏筛选控件的定义。"""
 
     column: str
     label: str | None = None
@@ -23,7 +23,7 @@ def build_filter_options(
     df: pd.DataFrame,
     fields: list[FilterField] | tuple[FilterField, ...],
 ) -> dict[str, list[Any]]:
-    """Build filter option lists for all configured fields."""
+    """为所有筛选字段构建可选值列表。"""
 
     return {
         field.column: _extract_options(df, field.column, field.sort_values)
@@ -37,7 +37,7 @@ def render_sidebar_filters(
     title: str = "维度筛选器",
     key_prefix: str = "dashboard_filter",
 ) -> dict[str, list[Any]]:
-    """Render grouped sidebar filters with dynamic downstream narrowing."""
+    """按分组渲染侧边栏筛选器，并动态收敛下游选项。"""
 
     st.sidebar.header(title)
     selections: dict[str, list[Any]] = {}
@@ -72,7 +72,7 @@ def apply_filters(
     selections: dict[str, list[Any]],
     fields: list[FilterField] | tuple[FilterField, ...],
 ) -> pd.DataFrame:
-    """Apply active sidebar filters in field order."""
+    """按字段顺序应用当前激活的筛选条件。"""
 
     filtered_df = df.copy()
     for field in fields:
@@ -83,7 +83,7 @@ def apply_filters(
 
 
 def _extract_options(df: pd.DataFrame, column: str, sort_values: bool) -> list[Any]:
-    """Extract unique option values for one filter column."""
+    """提取某个筛选字段的唯一可选值。"""
 
     if column not in df.columns:
         return []

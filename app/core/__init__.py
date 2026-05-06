@@ -1,2 +1,1 @@
-"""Core helpers for multi-page dashboard runtime."""
-
+"""多页面看板运行时的核心通用能力。"""

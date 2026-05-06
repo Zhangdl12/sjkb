@@ -1,4 +1,4 @@
-"""Generic page runner for multi-page dashboards."""
+"""多页面看板的通用运行器。"""
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from app.core.filters import FilterField, apply_filters, render_sidebar_filters
-from app.core.loader import DataLoadError, load_shared_workbook, select_required_sheets
+from app.core.loader import load_shared_workbook, select_required_sheets
 from app.core.shared_source import (
     get_shared_source_bytes,
     get_shared_source_name,
@@ -19,7 +19,7 @@ from app.core.shared_source import (
 
 @dataclass(frozen=True)
 class DashboardPageConfig:
-    """Configuration contract for a dashboard page."""
+    """单个看板页面的配置契约。"""
 
     page_title: str
     page_icon: str
@@ -39,7 +39,7 @@ class DashboardPageConfig:
 
 
 def run_dashboard_page(config: DashboardPageConfig) -> None:
-    """Render a dashboard page backed by the shared uploaded workbook."""
+    """基于共享上传工作簿运行一个看板页面。"""
 
     st.set_page_config(
         page_title=config.page_title,

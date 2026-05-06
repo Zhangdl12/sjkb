@@ -1,4 +1,4 @@
-"""Configuration for the material analysis dashboard."""
+"""素材分析看板配置。"""
 
 from dataclasses import dataclass
 
@@ -8,7 +8,7 @@ from app.core.page_runner import DashboardPageConfig
 
 @dataclass(frozen=True)
 class AppConfig:
-    """Static workbook and field configuration for material analysis."""
+    """素材分析看板使用的工作表和字段配置。"""
 
     plan_sheet: str = "计划类型匹配表"
     creative_sheet: str = "数据中心-创意数据"
@@ -45,7 +45,7 @@ DEFAULT_CONFIG = AppConfig()
 
 
 def build_page_config() -> DashboardPageConfig:
-    """Build the page runner config for this dashboard."""
+    """构建素材分析看板的页面运行配置。"""
 
     from app.dashboards.material_analysis.metrics import (
         build_pivot_table,

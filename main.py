@@ -1,4 +1,4 @@
-"""Root entrypoint for shared data source management."""
+"""共享数据源管理首页。"""
 
 import streamlit as st
 
@@ -10,7 +10,7 @@ from app.core.shared_source import (
 
 
 def main() -> None:
-    """Render the shared data source management page."""
+    """渲染共享数据源管理页面。"""
 
     st.set_page_config(page_title="看板数据源管理", page_icon="📁", layout="wide")
     st.title("看板数据源管理")

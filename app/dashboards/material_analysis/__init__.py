@@ -1,4 +1,4 @@
-"""Material analysis dashboard package."""
+"""素材分析看板实现包。"""
 
 from app.dashboards.material_analysis.config import (
     AppConfig,

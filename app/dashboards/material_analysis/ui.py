@@ -1,4 +1,4 @@
-"""Rendering helpers for the material analysis dashboard."""
+"""素材分析看板的页面渲染函数。"""
 
 import pandas as pd
 import streamlit as st
@@ -7,7 +7,7 @@ from app.dashboards.material_analysis.metrics import SummaryMetrics
 
 
 def render_summary(metrics: SummaryMetrics) -> None:
-    """Render the summary metric cards."""
+    """渲染顶部汇总指标卡。"""
 
     st.markdown("### 核心指标表现（当前筛选范围）")
 
@@ -21,7 +21,7 @@ def render_summary(metrics: SummaryMetrics) -> None:
 
 
 def render_pivot_table(pivot_df: pd.DataFrame) -> None:
-    """Render the pivot analysis table."""
+    """渲染透视分析表。"""
 
     st.markdown("---")
     st.markdown("### 分维度透视分析")
@@ -42,7 +42,7 @@ def render_pivot_table(pivot_df: pd.DataFrame) -> None:
 
 
 def render_detail_section(filtered_df: pd.DataFrame) -> None:
-    """Render the detail preview and CSV export section."""
+    """渲染明细预览和导出区域。"""
 
     with st.expander("点击查看并下载筛选后的数据明细"):
         st.dataframe(filtered_df.head(100).astype(str), width="stretch")
@@ -56,6 +56,6 @@ def render_detail_section(filtered_df: pd.DataFrame) -> None:
 
 
 def render_empty_state() -> None:
-    """Render the empty state for the current filter selection."""
+    """渲染当前筛选条件下的空结果提示。"""
 
     st.warning("当前筛选条件下无数据，请放宽筛选条件。")

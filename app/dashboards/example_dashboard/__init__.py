@@ -1,2 +1,1 @@
-"""Example dashboard package."""
-
+"""看板接入示例包。"""

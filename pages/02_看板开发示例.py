@@ -1,4 +1,4 @@
-"""Example page showing how to add new dashboards."""
+"""新增看板示例页面。"""
 
 import streamlit as st
 
@@ -10,7 +10,7 @@ from app.dashboards.example_dashboard.config import (
 
 
 def main() -> None:
-    """Render onboarding guidance for future dashboard pages."""
+    """渲染后续新增看板的接入说明。"""
 
     st.set_page_config(page_title=EXAMPLE_DASHBOARD_TITLE, page_icon="🧩", layout="wide")
     st.title(EXAMPLE_DASHBOARD_TITLE)
