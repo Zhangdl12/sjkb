@@ -1,11 +1,7 @@
 """素材分析看板实现包。"""
 
-from app.dashboards.material_analysis.config import (
-    AppConfig,
-    DEFAULT_CONFIG,
-    MATERIAL_ANALYSIS_CONFIG,
-)
-from app.dashboards.material_analysis.loader import SourceTables, load_source_tables
+from app.dashboards.material_analysis.config import AppConfig, DEFAULT_CONFIG
+from app.dashboards.material_analysis.loader import SourceTables
 from app.dashboards.material_analysis.metrics import (
     SummaryMetrics,
     build_pivot_table,
@@ -25,9 +21,7 @@ from app.dashboards.material_analysis.ui import (
 __all__ = [
     "AppConfig",
     "DEFAULT_CONFIG",
-    "MATERIAL_ANALYSIS_CONFIG",
     "SourceTables",
-    "load_source_tables",
     "SummaryMetrics",
     "build_pivot_table",
     "calculate_summary_metrics",
