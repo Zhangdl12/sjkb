@@ -77,9 +77,9 @@ def render_sidebar_filters(
     selections: dict[str, list[Any]] = {}
 
     # 按 group 分组，保持声明顺序
-    grouped_fields: OrderedDict[str, list[FilterField]] = OrderedDict()
+    grouped_fields: OrderedDict[str, list[FilterField]] = OrderedDict()#新建一个有序字典来存储分组后的筛选字段
     for field in fields:
-        grouped_fields.setdefault(field.group, []).append(field)
+        grouped_fields.setdefault(field.group, []).append(field) 
 
     for group_name, group_fields in grouped_fields.items():
         st.sidebar.subheader(group_name)
@@ -95,7 +95,7 @@ def render_sidebar_filters(
 
             # 如果上次选择的值在当前数据中仍然有效，则沿用；否则回退到全选
             default = [value for value in previous_selection if value in options]
-            if not default and field.default_all:
+            if not default and field.default_all: # 如果默认全选，且当前数据中不存在默认值，则回退到全选
                 default = options
 
             # 渲染多选组件，key 参数让 Streamlit 自动管理 widget 状态
