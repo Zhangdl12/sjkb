@@ -18,6 +18,7 @@
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
+from typing import Literal
 
 import pandas as pd
 import streamlit as st
@@ -34,23 +35,16 @@ class FilterField:
                不同 group 之间用分割线隔开。
         sort_values: 是否对下拉选项排序（数字列建议 True，文本列建议 False）
         default_all: 是否默认全选。为 True 时初次进入页面会自动选中全部选项。
+        control: 控件类型，默认多选，可选单选。
+        default_latest: 单选时是否默认选择候选列表中的最后一个值。
     """
     column: str
     label: str | None = None
     group: str = "筛选条件"
     sort_values: bool = False
     default_all: bool = True
-
-
-def build_filter_options(
-    df: pd.DataFrame,
-    fields: list[FilterField] | tuple[FilterField, ...],
-) -> dict[str, list[Any]]:
-    """为所有筛选字段构建可选值列表（通常在 render_sidebar_filters 内部使用）。"""
-    return {
-        field.column: _extract_options(df, field.column, field.sort_values)
-        for field in fields
-    }
+    control: Literal["multiselect", "single_select"] = "multiselect"
+    default_latest: bool = False
 
 
 def render_sidebar_filters(
@@ -74,7 +68,21 @@ def render_sidebar_filters(
         {列名: [已选值列表]} 字典，可直接传给 apply_filters()
     """
     st.sidebar.header(title)
-    selections: dict[str, list[Any]] = {}
+    state_keys = _build_filter_state_keys(fields, key_prefix)
+    reset_flag_key = f"{key_prefix}__reset_requested"
+    if st.sidebar.button("恢复默认", key=f"{key_prefix}_reset_filters"):
+        preserved_state = _build_preserved_single_select_state(
+            fields,
+            key_prefix,
+            st.session_state,
+        )
+        _clear_filter_state_keys(state_keys, st.session_state)
+        st.session_state.update(preserved_state)
+        st.session_state[reset_flag_key] = True
+        st.rerun()
+
+    selections: dict[str, Any] = {}
+    reset_requested = bool(st.session_state.get(reset_flag_key, False))
 
     # 按 group 分组，保持声明顺序
     grouped_fields: OrderedDict[str, list[FilterField]] = OrderedDict()#新建一个有序字典来存储分组后的筛选字段
@@ -91,27 +99,67 @@ def render_sidebar_filters(
 
             # 从 session_state 恢复用户上次的选择（页面 rerun 时保留）
             state_key = f"{key_prefix}_{field.column}"
-            previous_selection = st.session_state.get(state_key, [])
+            previous_selection = st.session_state.get(
+                state_key,
+                [] if field.control == "multiselect" else None,
+            )
+
+            if field.control == "single_select":
+                if reset_requested:
+                    default = _resolve_reset_widget_value(options, field, previous_selection)
+                    st.session_state[state_key] = default
+                else:
+                    default = _resolve_single_default(options, previous_selection, field.default_latest)
+                if not options:
+                    st.sidebar.selectbox(
+                        field.label or field.column,
+                        options=["无可选项"],
+                        index=0,
+                        key=state_key,
+                        disabled=True,
+                    )
+                    selections[field.column] = []
+                    continue
+
+                default_index = options.index(default) if default in options else 0
+                selections[field.column] = st.sidebar.selectbox(
+                    field.label or field.column,
+                    options=options,
+                    index=default_index,
+                    key=state_key,
+                )
+                continue
 
             # 如果上次选择的值在当前数据中仍然有效，则沿用；否则回退到全选
-            default = [value for value in previous_selection if value in options]
+            default = [value for value in _normalize_selected_values(previous_selection) if value in options]
             if not default and field.default_all: # 如果默认全选，且当前数据中不存在默认值，则回退到全选
                 default = options
+            if reset_requested:
+                default = _resolve_reset_widget_value(options, field, previous_selection)
+                st.session_state[state_key] = default
 
             # 渲染多选组件，key 参数让 Streamlit 自动管理 widget 状态
-            selections[field.column] = st.sidebar.multiselect(
+            selected_values = st.sidebar.multiselect(
                 field.label or field.column,
                 options=options,
                 default=default,
                 key=state_key,
             )
+            selections[field.column] = _normalize_filter_selection(
+                selected_values,
+                options,
+                field,
+            )
+
+    if reset_requested:
+        st.session_state[reset_flag_key] = False
 
     return selections
 
 
 def apply_filters(
     df: pd.DataFrame,
-    selections: dict[str, list[Any]],
+    selections: dict[str, Any],
     fields: list[FilterField] | tuple[FilterField, ...],
 ) -> pd.DataFrame:
     """按 FilterField 声明顺序，依次应用当前激活的筛选条件。
@@ -128,7 +176,7 @@ def apply_filters(
     """
     filtered_df = df.copy()
     for field in fields:
-        selected_values = selections.get(field.column, [])
+        selected_values = _normalize_selected_values(selections.get(field.column, []))
         # 只有在用户确实选择了部分值（且列存在）时才过滤
         if selected_values and field.column in filtered_df.columns:
             filtered_df = filtered_df[filtered_df[field.column].isin(selected_values)]
@@ -153,3 +201,95 @@ def _extract_options(df: pd.DataFrame, column: str, sort_values: bool) -> list[A
     if sort_values:
         values = sorted(values)
     return values
+
+
+def _resolve_single_default(
+    options: list[Any],
+    previous_selection: Any,
+    default_latest: bool,
+) -> Any | None:
+    """解析单选控件的默认值。"""
+    if previous_selection in options:
+        return previous_selection
+    if not options:
+        return None
+    if default_latest:
+        return options[-1]
+    return options[0]
+
+
+def _normalize_selected_values(selected_values: Any) -> list[Any]:
+    """将单值/多值统一归一化为列表。"""
+    if selected_values is None:
+        return []
+    if isinstance(selected_values, list):
+        return selected_values
+    return [selected_values]
+
+
+def _normalize_filter_selection(
+    selected_values: list[Any],
+    options: list[Any],
+    field: FilterField,
+) -> list[Any]:
+    """将多选结果归一化为真实筛选语义。
+
+    默认全选的多选框，如果当前选择覆盖了全部候选项，
+    应视为“未激活筛选”，而不是显式的全量过滤条件。
+    """
+    normalized_values = _normalize_selected_values(selected_values)
+    if (
+        field.control == "multiselect"
+        and field.default_all
+        and options
+        and len(normalized_values) == len(options)
+        and set(normalized_values) == set(options)
+    ):
+        return []
+    return normalized_values
+
+
+def _build_filter_state_keys(
+    fields: list[FilterField] | tuple[FilterField, ...],
+    key_prefix: str,
+) -> list[str]:
+    """构造当前页面全部筛选控件的 session_state keys。"""
+    return [f"{key_prefix}_{field.column}" for field in fields]
+
+
+def _clear_filter_state_keys(
+    state_keys: list[str],
+    state: dict[str, Any],
+) -> None:
+    """只清理当前页面筛选相关的 state keys。"""
+    for state_key in state_keys:
+        state.pop(state_key, None)
+
+
+def _build_preserved_single_select_state(
+    fields: list[FilterField] | tuple[FilterField, ...],
+    key_prefix: str,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    """恢复默认时保留当前单选控件值。"""
+    preserved_state: dict[str, Any] = {}
+    for field in fields:
+        if field.control != "single_select":
+            continue
+        state_key = f"{key_prefix}_{field.column}"
+        if state_key in state:
+            preserved_state[state_key] = state[state_key]
+    return preserved_state
+
+
+def _resolve_reset_widget_value(
+    options: list[Any],
+    field: FilterField,
+    previous_selection: Any,
+) -> Any:
+    """恢复默认时，为当前控件解析应该写回的 widget 值。"""
+    if field.control == "single_select":
+        return _resolve_single_default(options, previous_selection, field.default_latest)
+    if field.default_all:
+        return options
+    return []

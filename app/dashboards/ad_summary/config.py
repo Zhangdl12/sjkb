@@ -40,6 +40,7 @@ class AppConfig:
     shop_brand_column: str = "品牌"
 
     sku_id_column: str = "京东skuID"
+    sku_product_name_column: str = "商品名称"
     category_column: str = "分类"
     brand_column: str = "品牌"
 

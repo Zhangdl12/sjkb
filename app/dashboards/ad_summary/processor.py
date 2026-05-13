@@ -78,10 +78,12 @@ def build_ad_summary_dataset(
         )
 
         # 第3步：填充分类字段的缺失值
-        # 商品名称缺失 → 填充"未知"
-        merged_df[config.product_name_column] = merged_df[
-            config.ad_product_name_column
-        ].fillna(config.unknown_text)
+        # 商品名称优先级：SKU映射表商品名称 > 广告表商品名称 > "未知"
+        merged_df[config.product_name_column] = (
+            merged_df[config.product_name_column]
+            .fillna(merged_df[config.ad_product_name_column])
+            .fillna(config.unknown_text)
+        )
         
         # 品牌优先级：SKU品牌 > 店铺品牌 > "未知"
         merged_df[config.brand_column] = (
@@ -217,13 +219,22 @@ def _build_sku_mapping(df: pd.DataFrame, config: AppConfig) -> pd.DataFrame:
     # 转换商品ID为数值类型
     sku_df[config.sku_id_column] = pd.to_numeric(sku_df[config.sku_id_column], errors="coerce")
     
+    # 商品名称列缺失时补空，避免后续关联报错
+    if config.sku_product_name_column not in sku_df.columns:
+        sku_df[config.sku_product_name_column] = pd.NA
+
     # 重命名列，避免与店铺品牌列冲突
     sku_df = sku_df.rename(columns={config.brand_column: "_sku_brand"})
     
     # 提取关键字段并去重（每个商品ID只保留一条记录）
-    return sku_df[[config.sku_id_column, config.category_column, "_sku_brand"]].drop_duplicates(
-        subset=[config.sku_id_column]
-    )
+    return sku_df[
+        [
+            config.sku_id_column,
+            config.sku_product_name_column,
+            config.category_column,
+            "_sku_brand",
+        ]
+    ].drop_duplicates(subset=[config.sku_id_column])
 
 
 def _build_plan_mapping(df: pd.DataFrame, config: AppConfig) -> pd.DataFrame:
