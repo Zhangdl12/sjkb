@@ -50,6 +50,20 @@ class TestAdSummaryUi(unittest.TestCase):
 
         self.assertIsNotNone(styler)
 
+    def test_build_styler_sets_readable_cell_background_for_dark_mode(self) -> None:
+        df = pd.DataFrame(
+            {
+                self.config.period_label_column: ["2025/1/1"],
+                "广告点击": [10],
+                "广告ROI": [2.5],
+            }
+        )
+
+        html = _build_styler(df, self.config).to_html()
+
+        self.assertIn("background-color: #ffffff", html)
+        self.assertIn("color: #111111", html)
+
 
 if __name__ == "__main__":
     unittest.main()

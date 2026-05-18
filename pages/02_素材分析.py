@@ -22,11 +22,9 @@
 import streamlit as st
 
 from app.core.filters import FilterField, apply_filters, render_sidebar_filters
-from app.core.loader import load_shared_workbook, select_required_sheets
+from app.core.session_loader import load_current_source_sheets
 from app.core.shared_source import (
-    get_shared_source_bytes,
     get_shared_source_name,
-    get_shared_source_token,
     has_shared_source,
 )
 from app.dashboards.material_analysis.config import AppConfig
@@ -62,18 +60,13 @@ def main() -> None:
     source_name = get_shared_source_name()
     st.caption(f"当前共享数据源：`{source_name}`")
 
-    # ========== 4. 加载工作簿 → 提取工作表 → 加工数据 ==========
-    # Step 4a: 从 session_state 获取字节数据并缓存解析整个 Excel
-    workbook = load_shared_workbook(
-        get_shared_source_bytes(), source_name, get_shared_source_token()
+    # ========== 4. 按需加载工作表 → 加工数据 ==========
+    # 只读取素材分析需要的 3 张工作表和必要列，避免解析整本 Excel。
+    tables = load_current_source_sheets(
+        cfg.required_sheets,
+        cfg.source_usecols,
     )
-    # Step 4b: 从工作簿中提取本看板需要的 3 张工作表（按别名访问）
-    tables = select_required_sheets(workbook, {
-        "plan": cfg.plan_sheet,         # 计划类型匹配表
-        "creative": cfg.creative_sheet,  # 数据中心-创意数据
-        "sku": cfg.sku_sheet,           # 商品匹配表
-    })
-    # Step 4c: 合并 + 派生列 + 分类标记 → 分析宽表
+    # 合并 + 派生列 + 分类标记 → 分析宽表
     df = build_analysis_dataset(tables, cfg)
 
     # ========== 5. 侧边栏筛选器 ==========

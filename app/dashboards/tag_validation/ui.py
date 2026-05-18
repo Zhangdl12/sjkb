@@ -177,7 +177,7 @@ def render_sku_summary() -> None:
 
 
 def render_sku_table(payload: SkuTreePayload) -> None:
-    """渲染 SKU 费用树形表（分类 → 投放产品SKU）。"""
+    """渲染 SKU 费用树形表（新分类 → 跟单SKU ID）。"""
     config = DEFAULT_CONFIG
     if payload.tree_df.empty:
         render_empty_state("当前SKU数据为空，无法展示SKU标签检验表。")

@@ -4,7 +4,7 @@
 三个核心函数对应三个标签页：
   - build_keyword_tree_payload()  → 关键词树形（词性分类 → 关键词）
   - build_audience_tree_payload() → 人群树形（人群分类 → 人群名称）
-  - build_sku_tree_payload()      → SKU树形（分类 → 投放产品SKU）
+  - build_sku_tree_payload()      → SKU树形（新分类 → 跟单SKU ID）
 
 树形数据格式（AgGrid 要求）：
   每行有一个 "path" 列，用 "||" 作为路径分隔符：
@@ -202,7 +202,7 @@ def build_sku_tree_payload(
     group_by: list[str],
     config: AppConfig,
 ) -> SkuTreePayload:
-    """构造两级 SKU 树形表数据（分类 → 投放产品SKU）。"""
+    """构造两级 SKU 树形表数据（新分类 → 跟单SKU ID）。"""
     _ = group_by
 
     if df.empty:

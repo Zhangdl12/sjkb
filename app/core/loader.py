@@ -8,7 +8,11 @@
    - source_token 是文件字节的 md5 哈希，保证相同文件只解析一次
    - 是看板页面的主要入口
 
-2. select_required_sheets() — 从已加载的工作簿中按别名提取指定工作表
+2. load_shared_sheets() — 从共享数据源按需加载指定工作表
+   - 用 @st.cache_data 缓存，键为 (file_bytes, source_name, source_token, sheet_mapping)
+   - 适合只需要少量 sheet 的页面，避免解析大型 workbook 中的无关 sheet
+
+3. select_required_sheets() — 从已加载的工作簿中按别名提取指定工作表
    - 接收 load_shared_workbook 的返回值
    - 按 {别名: 工作表名} 映射提取，验证必需工作表是否存在
    - 返回 {别名: DataFrame} 供后续加工
@@ -35,6 +39,7 @@ class DataLoadError(Exception):
 def load_excel_sheets(
     file_source: str | Path | bytes | BinaryIO,
     sheet_mapping: Mapping[str, str] | Sequence[str],
+    usecols_mapping: Mapping[str, list[str] | str] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """从 Excel 数据源中读取一个或多个指定工作表（独立函数，不依赖缓存）。
 
@@ -43,17 +48,24 @@ def load_excel_sheets(
         sheet_mapping: 工作表定义
             - 字典 {"别名": "工作表名"} → 返回 {别名: DataFrame}
             - 列表 ["工作表名"] → 返回 {工作表名: DataFrame}
+        usecols_mapping: 可选的列读取范围
+            - 键可以是别名，也可以是真实工作表名
+            - 值传给 pandas.read_excel(usecols=...)，例如 ["关键词", "花费"]
 
     Returns:
         {别名或工作表名: DataFrame} 字典
     """
     excel_source = _normalize_excel_source(file_source)
     mapping = _normalize_sheet_mapping(sheet_mapping)
+    usecols_by_alias = usecols_mapping or {}
 
     try:
         excel_file = pd.ExcelFile(excel_source)
         return {
-            alias: excel_file.parse(sheet_name)
+            alias: excel_file.parse(
+                sheet_name,
+                usecols=usecols_by_alias.get(alias, usecols_by_alias.get(sheet_name)),
+            )
             for alias, sheet_name in mapping.items()
         }
     except Exception as exc:
@@ -62,7 +74,7 @@ def load_excel_sheets(
 
 @st.cache_data(show_spinner=False)
 def load_shared_workbook(
-    file_bytes: bytes,
+    _file_bytes: bytes,
     source_name: str,
     source_token: str,
 ) -> dict[str, pd.DataFrame]:
@@ -72,7 +84,7 @@ def load_shared_workbook(
     （文件字节的 md5）不变，重复调用不会重新解析 Excel。
 
     Args:
-        file_bytes: Excel 文件的原始字节（来自 session_state）
+        _file_bytes: Excel 文件的原始字节（来自 session_state）
         source_name: 文件名（仅用于缓存标识，不参与实际读取）
         source_token: 文件 md5 哈希（用作缓存键，保证文件内容变化时自动刷新）
 
@@ -84,13 +96,41 @@ def load_shared_workbook(
 
     try:
         # BytesIO 将字节数据包装成文件对象，供 pd.ExcelFile 读取
-        excel_file = pd.ExcelFile(BytesIO(file_bytes))
+        excel_file = pd.ExcelFile(BytesIO(_file_bytes))
         return {
             sheet_name: excel_file.parse(sheet_name)
             for sheet_name in excel_file.sheet_names
         }
     except Exception as exc:
         raise DataLoadError(f"读取共享 Excel 数据失败: {exc}") from exc
+
+
+@st.cache_data(show_spinner=False)
+def load_shared_sheets(
+    _file_bytes: bytes,
+    source_name: str,
+    source_token: str,
+    sheet_mapping: Mapping[str, str] | Sequence[str],
+    usecols_mapping: Mapping[str, list[str] | str] | None = None,
+) -> dict[str, pd.DataFrame]:
+    """从共享 Excel 文件中按需读取指定工作表并缓存结果。
+
+    与 load_shared_workbook() 不同，本函数不会解析整本 workbook，只读取调用方声明的
+    sheet。标签检验表使用的新数据源体积较大，按需读取可以明显减少无关 sheet 的解析成本。
+
+    Args:
+        _file_bytes: Excel 文件原始字节
+        source_name: 文件名，仅用于缓存键和错误定位
+        source_token: 文件 md5 哈希，用作缓存失效标识
+        sheet_mapping: {别名: 工作表名} 或 [工作表名]
+        usecols_mapping: 可选的列读取范围，键支持别名或真实工作表名
+
+    Returns:
+        {别名: DataFrame} 字典，包含调用方请求的工作表
+    """
+    _ = source_name  # 参数保留用于缓存键，实际读取依赖 file_bytes。
+    _ = source_token
+    return load_excel_sheets(_file_bytes, sheet_mapping, usecols_mapping)
 
 
 def select_required_sheets(

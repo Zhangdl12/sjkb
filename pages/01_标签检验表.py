@@ -3,42 +3,37 @@
 
 包含三个标签页：
   标签 1「关键词标签检验」：
-    - 数据源：关键词匹配表 + 数据中心-关键词数据
-    - 树形结构：词性分类 → 关键词，按费用降序
+    - 事实数据：业务数据源 workbook 的“关键词数据源”
+    - 打标数据：打标 workbook 的“关键词打标”
+    - 树形结构：词性分类 → 关键词，按广告费用降序
   标签 2「人群标签检验」：
-    - 数据源：人群匹配表 + 数据中心-店铺人群数据
-    - 树形结构：人群分类 → 人群名称，按费用降序
+    - 事实数据：业务数据源 workbook 的“人群数据源”
+    - 打标数据：打标 workbook 的“人群打标”
+    - 树形结构：人群分类 → 人群名称，按广告费用降序
   标签 3「SKU标签检验」：
-    - 数据源：商品匹配表 + 数据中心-产品数据
-    - 树形结构：分类 → 投放产品SKU，按费用降序
+    - 事实数据：业务数据源 workbook 的“站内外数据源”
+    - 打标数据：打标 workbook 的“商品打标”
+    - 树形结构：新分类 → 跟单SKU ID，按广告费用降序
 
-三个标签共享同一个 Excel 工作簿（load_shared_workbook 只执行一次），
-但各自独立加工数据、构建树形结构、渲染 AgGrid 表格。
+页面会分别加载业务数据源和打标文件两个 Excel。这样可以保持业务数据源为最新导出，
+同时让打标文件独立维护、独立替换。
 """
 import streamlit as st
 
-from app.core.loader import load_shared_workbook, select_required_sheets
 from app.core.shared_source import (
     get_shared_source_bytes,
     get_shared_source_name,
     get_shared_source_token,
+    get_tag_source_bytes,
+    get_tag_source_name,
+    get_tag_source_token,
     has_shared_source,
+    has_tag_source,
 )
-from app.dashboards.tag_validation.config import AppConfig
-from app.dashboards.tag_validation.processor import (
-    build_audience_dataset,
-    build_keyword_dataset,
-    build_sku_dataset,
-)
-from app.dashboards.tag_validation.tree_builder import (
-    build_audience_tree_payload,
-    build_keyword_tree_payload,
-    build_sku_tree_payload,
-)
+from app.dashboards.tag_validation.service import load_tag_validation_payloads
 from app.dashboards.tag_validation.ui import (
     render_audience_summary,
     render_audience_table,
-    render_empty_state,
     render_keyword_table,
     render_sku_summary,
     render_sku_table,
@@ -47,65 +42,60 @@ from app.dashboards.tag_validation.ui import (
 
 
 def main() -> None:
-    # ========== 1. 初始化配置 ==========
-    cfg = AppConfig()
-
-    # ========== 2. 页面基本设置 ==========
+    # ========== 1. 页面基本设置 ==========
     st.set_page_config(page_title="标签检验表", page_icon="🏷️", layout="wide")
     st.title("标签检验表")
-    st.caption("关键词 + 人群 + SKU 标签检验，数据来自首页上传的共享 Excel。")
+    st.caption("关键词 + 人群 + SKU 标签检验，数据来自业务数据源和独立打标文件。")
 
-    # ========== 3. 检查共享数据源 ==========
+    # ========== 2. 检查业务数据源和打标文件 ==========
+    # 标签检验表需要两个 workbook：业务数据源提供事实数据，打标文件提供分类标签。
     if not has_shared_source():
-        st.warning("请先在首页上传共享数据源，然后再进入当前看板。")
+        st.warning("请先在首页上传业务数据源，然后再进入当前看板。")
+        st.stop()
+
+    if not has_tag_source():
+        st.warning("请先在首页上传打标文件，然后再进入当前看板。")
         st.stop()
 
     source_name = get_shared_source_name()
-    st.caption(f"当前共享数据源：`{source_name}`")
+    tag_source_name = get_tag_source_name()
+    st.caption(f"当前业务数据源：`{source_name}`")
+    st.caption(f"当前打标文件：`{tag_source_name}`")
 
-    # ========== 4. 加载工作簿（一次性加载全部 6 张工作表） ==========
-    workbook = load_shared_workbook(
-        get_shared_source_bytes(), source_name, get_shared_source_token()
+    # ========== 3. 一次性加载三类标签检验结果 ==========
+    # 用户切换关键词/人群/SKU 时，Streamlit 会整页重跑。这里把耗时计算缓存到最终树表层，
+    # 页面重跑只切换已经算好的小结果，不再按单选项重复解析 Excel。
+    with st.spinner("正在一次性读取并计算关键词、人群、SKU 标签检验数据，请稍候..."):
+        payloads = load_tag_validation_payloads(
+            get_shared_source_bytes(),
+            source_name or "",
+            get_shared_source_token() or "",
+            get_tag_source_bytes(),
+            tag_source_name or "",
+            get_tag_source_token() or "",
+        )
+
+    # ========== 4. 选择检验类型 ==========
+    # 这里仍使用单选而不是 st.tabs，避免 Streamlit 同时渲染三个大型 AgGrid。
+    validation_type = st.radio(
+        "选择标签检验类型",
+        ["关键词标签检验", "人群标签检验", "SKU标签检验"],
+        horizontal=True,
+        label_visibility="collapsed",
     )
-    tables = select_required_sheets(workbook, cfg.required_sheets)
 
-    # ========== 5. 标签页切换 ==========
-    tab_keyword, tab_audience, tab_sku = st.tabs(
-        ["关键词标签检验", "人群标签检验", "SKU标签检验"]
-    )
+    # ========== 5. 按当前类型渲染已缓存的树表 ==========
+    if validation_type == "关键词标签检验":
+        render_summary(None)
+        render_keyword_table(payloads.keyword)
 
-    # ---------- 标签 1: 关键词标签检验 ----------
-    with tab_keyword:
-        keyword_df = build_keyword_dataset(tables, cfg)
+    elif validation_type == "人群标签检验":
+        render_audience_summary()
+        render_audience_table(payloads.audience)
 
-        if keyword_df.empty:
-            render_empty_state("当前关键词数据为空，无法展示关键词标签检验表。")
-        else:
-            keyword_tree = build_keyword_tree_payload(keyword_df, [], cfg) # 构造两级关键词树形表数据(词性分类关键词)
-            render_summary(None)  # 渲染标签检验表标题
-            render_keyword_table(keyword_tree)   # 渲染关键词标签检验表
-
-    # ---------- 标签 2: 人群标签检验 ----------
-    with tab_audience:
-        audience_df = build_audience_dataset(tables, cfg)
-
-        if audience_df.empty:
-            render_empty_state("当前人群数据为空，无法展示人群标签检验表。")
-        else:
-            audience_tree = build_audience_tree_payload(audience_df, [], cfg)
-            render_audience_summary() # 渲染人群标签检验表标题
-            render_audience_table(audience_tree) # 渲染人群标签检验表
-
-    # ---------- 标签 3: SKU 标签检验 ----------
-    with tab_sku:
-        sku_df = build_sku_dataset(tables, cfg)
-
-        if sku_df.empty:
-            render_empty_state("当前SKU数据为空，无法展示SKU标签检验表。")
-        else:
-            sku_tree = build_sku_tree_payload(sku_df, [], cfg)
-            render_sku_summary() # 渲染SKU标签检验表标题
-            render_sku_table(sku_tree) # 渲染SKU标签检验表
+    else:
+        render_sku_summary()
+        render_sku_table(payloads.sku)
 
 
 if __name__ == "__main__":

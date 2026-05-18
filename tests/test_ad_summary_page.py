@@ -82,24 +82,47 @@ class TestAdSummaryPage(unittest.TestCase):
         selections = {
             cfg.year_column: 2025,
             cfg.quarter_label_column: ["Q1"],
-            cfg.channel_type_column: ["RTB"],
-            cfg.new_channel_column: ["站外广告"],
-            cfg.brand_column: ["惠氏"],
+            cfg.channel_type_column: ["搜索"],
+            cfg.new_channel_column: ["搜索快车"],
+            cfg.plan_aggregate_column: ["搜索计划"],
+            cfg.brand_column: ["雀巢"],
+            cfg.product_name_column: ["商品A"],
         }
 
-        shop_metric_selections = {
-            column: value
-            for column, value in selections.items()
-            if column
-            not in {
-                cfg.channel_type_column,
-                cfg.new_channel_column,
-            }
-        }
+        shop_metric_selections = ad_summary_page.build_shop_metric_selections(selections, cfg)
 
         self.assertNotIn(cfg.channel_type_column, shop_metric_selections)
         self.assertNotIn(cfg.new_channel_column, shop_metric_selections)
+        self.assertNotIn(cfg.plan_aggregate_column, shop_metric_selections)
         self.assertIn(cfg.brand_column, shop_metric_selections)
+        self.assertIn(cfg.product_name_column, shop_metric_selections)
+
+    def test_filter_fields_include_new_tag_dimensions(self) -> None:
+        cfg = self.config
+        filter_columns = [field.column for field in ad_summary_page.build_filter_fields(cfg)]
+
+        self.assertIn(cfg.plan_aggregate_column, filter_columns)
+        self.assertIn(cfg.new_channel_column, filter_columns)
+        self.assertIn(cfg.channel_type_column, filter_columns)
+        self.assertIn(cfg.category_column, filter_columns)
+        self.assertIn(cfg.brand_column, filter_columns)
+
+    def test_period_options_resolve_selected_period(self) -> None:
+        period_options = ad_summary_page.get_period_options()
+
+        self.assertEqual(
+            period_options,
+            (
+                ("季度汇总", "quarter"),
+                ("月度汇总", "month"),
+                ("周度汇总", "week"),
+                ("日度汇总", "day"),
+            ),
+        )
+        self.assertEqual(
+            ad_summary_page._resolve_selected_period("月度汇总", period_options),
+            "month",
+        )
 
 
 if __name__ == "__main__":

@@ -1,9 +1,17 @@
 import unittest
+from hashlib import md5
+from io import BytesIO
 
 import pandas as pd
 
+from app.core.loader import load_excel_sheets
 from app.dashboards.tag_validation.config import AppConfig
-from app.dashboards.tag_validation.processor import build_sku_dataset
+from app.dashboards.tag_validation.processor import (
+    build_audience_dataset,
+    build_keyword_dataset,
+    build_sku_dataset,
+)
+from app.dashboards.tag_validation.service import load_tag_validation_payloads
 from app.dashboards.tag_validation.tree_builder import (
     build_audience_tree_payload,
     build_keyword_tree_payload,
@@ -12,21 +20,206 @@ from app.dashboards.tag_validation.tree_builder import (
 from app.dashboards.tag_validation.ui import _build_tree_grid_options
 
 
-class TestTagValidationSkuName(unittest.TestCase):
-    def test_build_sku_dataset_includes_product_name_from_match_table(self) -> None:
+class TestTagValidation(unittest.TestCase):
+    def test_load_excel_sheets_can_limit_columns_by_alias(self) -> None:
+        buffer = BytesIO()
+        source_df = pd.DataFrame({"关键词": ["奶粉"], "花费": [10], "点击数": [3]})
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            source_df.to_excel(writer, sheet_name="关键词数据源", index=False)
+
+        tables = load_excel_sheets(
+            buffer.getvalue(),
+            {"keyword_fact": "关键词数据源"},
+            {"keyword_fact": ["关键词", "花费"]},
+        )
+
+        self.assertEqual(list(tables["keyword_fact"].columns), ["关键词", "花费"])
+
+    def test_load_tag_validation_payloads_builds_three_tables_once(self) -> None:
+        config = AppConfig()
+        source_buffer = BytesIO()
+        tag_buffer = BytesIO()
+
+        with pd.ExcelWriter(source_buffer, engine="openpyxl") as writer:
+            pd.DataFrame(
+                {
+                    config.keyword_column: ["品牌词", "品牌词"],
+                    config.keyword_cost_column: [10, 5],
+                    "无关列": ["不应读取", "不应读取"],
+                }
+            ).to_excel(writer, sheet_name=config.keyword_fact_sheet, index=False)
+            pd.DataFrame(
+                {
+                    config.audience_name_column: ["宝妈"],
+                    config.audience_cost_column: [20],
+                    "无关列": ["不应读取"],
+                }
+            ).to_excel(writer, sheet_name=config.audience_fact_sheet, index=False)
+            pd.DataFrame(
+                {
+                    config.sku_fact_id_column: ["1001"],
+                    config.sku_cost_column: [30],
+                    "无关列": ["不应读取"],
+                }
+            ).to_excel(writer, sheet_name=config.sku_fact_sheet, index=False)
+
+        with pd.ExcelWriter(tag_buffer, engine="openpyxl") as writer:
+            pd.DataFrame(
+                {
+                    config.keyword_column: ["品牌词"],
+                    config.keyword_category_column: ["品牌"],
+                }
+            ).to_excel(writer, sheet_name=config.keyword_tag_sheet, index=False)
+            pd.DataFrame(
+                {
+                    config.audience_name_column: ["宝妈"],
+                    config.audience_category_column: ["人群"],
+                }
+            ).to_excel(writer, sheet_name=config.audience_tag_sheet, index=False)
+            pd.DataFrame(
+                {
+                    config.sku_match_id_column: ["1001"],
+                    config.sku_category_column: ["SKU分类"],
+                    config.sku_name_column: ["商品A"],
+                }
+            ).to_excel(writer, sheet_name=config.sku_tag_sheet, index=False)
+
+        source_bytes = source_buffer.getvalue()
+        tag_bytes = tag_buffer.getvalue()
+        payloads = load_tag_validation_payloads(
+            source_bytes,
+            "source.xlsx",
+            md5(source_bytes).hexdigest(),
+            tag_bytes,
+            "tag.xlsx",
+            md5(tag_bytes).hexdigest(),
+        )
+
+        self.assertFalse(payloads.keyword.tree_df.empty)
+        self.assertFalse(payloads.audience.tree_df.empty)
+        self.assertFalse(payloads.sku.tree_df.empty)
+        self.assertIn("品牌||品牌词", payloads.keyword.tree_df["path"].tolist())
+        self.assertIn("人群||宝妈", payloads.audience.tree_df["path"].tolist())
+        self.assertIn("SKU分类||1001", payloads.sku.tree_df["path"].tolist())
+        keyword_child = payloads.keyword.tree_df.loc[
+            payloads.keyword.tree_df["path"] == "品牌||品牌词"
+        ].iloc[0]
+        self.assertEqual(keyword_child[config.display_keyword_cost_column], 15.0)
+
+    def test_config_uses_new_jd_source_and_tag_sheets(self) -> None:
+        config = AppConfig()
+
+        self.assertEqual(
+            config.required_source_sheets,
+            {
+                "keyword_fact": "关键词数据源",
+                "audience_fact": "人群数据源",
+                "sku_fact": "站内外数据源",
+            },
+        )
+        self.assertEqual(
+            config.required_tag_sheets,
+            {
+                "keyword_tag": "关键词打标",
+                "audience_tag": "人群打标",
+                "sku_tag": "商品打标",
+            },
+        )
+        self.assertEqual(
+            config.source_usecols["keyword_fact"],
+            [config.keyword_column, config.keyword_cost_column],
+        )
+        self.assertEqual(
+            config.tag_usecols["sku_tag"],
+            [
+                config.sku_match_id_column,
+                config.sku_category_column,
+                config.sku_name_column,
+            ],
+        )
+
+    def test_build_keyword_dataset_uses_keyword_tag_table(self) -> None:
         config = AppConfig()
         tables = {
-            "sku_match": pd.DataFrame(
+            "keyword_fact": pd.DataFrame(
                 {
-                    config.sku_match_id_column: ["1001", "1002"],
-                    config.sku_category_column: ["奶粉", "零食"],
-                    "商品名称": ["启赋蕴淳", "小饼干"],
+                    config.keyword_column: ["婴幼儿奶粉", "未打标词"],
+                    config.keyword_cost_column: [100, 20],
                 }
             ),
+            "keyword_tag": pd.DataFrame(
+                {
+                    config.keyword_column: ["婴幼儿奶粉"],
+                    config.keyword_category_column: ["类目词"],
+                }
+            ),
+        }
+
+        result = build_keyword_dataset(tables, config)
+
+        self.assertEqual(
+            list(result.columns),
+            [
+                config.display_keyword_category_column,
+                config.keyword_column,
+                config.display_keyword_cost_column,
+            ],
+        )
+        self.assertEqual(result.iloc[0][config.display_keyword_category_column], "类目词")
+        self.assertEqual(
+            result.iloc[1][config.display_keyword_category_column],
+            config.blank_category,
+        )
+        self.assertEqual(result[config.display_keyword_cost_column].tolist(), [100, 20])
+
+    def test_build_audience_dataset_uses_audience_tag_table(self) -> None:
+        config = AppConfig()
+        tables = {
+            "audience_fact": pd.DataFrame(
+                {
+                    config.audience_name_column: ["A1-竞品兴趣", "未打标人群"],
+                    config.audience_cost_column: [80, 30],
+                }
+            ),
+            "audience_tag": pd.DataFrame(
+                {
+                    config.audience_name_column: ["A1-竞品兴趣"],
+                    config.audience_category_column: ["A1-行业兴趣"],
+                }
+            ),
+        }
+
+        result = build_audience_dataset(tables, config)
+
+        self.assertEqual(
+            list(result.columns),
+            [
+                config.display_audience_category_column,
+                config.audience_name_column,
+                config.display_audience_cost_column,
+            ],
+        )
+        self.assertEqual(result.iloc[0][config.display_audience_category_column], "A1-行业兴趣")
+        self.assertEqual(
+            result.iloc[1][config.display_audience_category_column],
+            config.blank_category,
+        )
+        self.assertEqual(result[config.display_audience_cost_column].tolist(), [80, 30])
+
+    def test_build_sku_dataset_uses_product_tag_table(self) -> None:
+        config = AppConfig()
+        tables = {
             "sku_fact": pd.DataFrame(
                 {
                     config.sku_fact_id_column: ["1001", "1001", "9999"],
                     config.sku_cost_column: [100, 60, 20],
+                }
+            ),
+            "sku_tag": pd.DataFrame(
+                {
+                    config.sku_match_id_column: ["1001", "1002"],
+                    config.sku_category_column: ["启护箱装", "其他"],
+                    config.sku_name_column: ["启赋蕴淳", "小饼干"],
                 }
             ),
         }
@@ -50,6 +243,13 @@ class TestTagValidationSkuName(unittest.TestCase):
         )
         self.assertEqual(
             result.loc[
+                result[config.sku_fact_id_column] == "9999",
+                config.display_sku_category_column,
+            ].tolist(),
+            [config.blank_category],
+        )
+        self.assertEqual(
+            result.loc[
                 result[config.sku_fact_id_column] == "9999", config.sku_name_column
             ].tolist(),
             [""],
@@ -59,7 +259,7 @@ class TestTagValidationSkuName(unittest.TestCase):
         config = AppConfig()
         sku_df = pd.DataFrame(
             {
-                config.display_sku_category_column: ["奶粉", "奶粉", config.blank_category],
+                config.display_sku_category_column: ["启护箱装", "启护箱装", config.blank_category],
                 config.sku_fact_id_column: ["1001", "1001", "9999"],
                 config.display_sku_cost_column: [100, 60, 20],
                 config.sku_name_column: ["启赋蕴淳", "启赋蕴淳", ""],
@@ -68,8 +268,8 @@ class TestTagValidationSkuName(unittest.TestCase):
 
         tree_df = build_sku_tree_payload(sku_df, [], config).tree_df
 
-        parent_row = tree_df.loc[tree_df["path"] == "奶粉"].iloc[0]
-        child_row = tree_df.loc[tree_df["path"] == "奶粉||1001"].iloc[0]
+        parent_row = tree_df.loc[tree_df["path"] == "启护箱装"].iloc[0]
+        child_row = tree_df.loc[tree_df["path"] == "启护箱装||1001"].iloc[0]
 
         self.assertEqual(parent_row[config.sku_fact_id_column], "")
         self.assertEqual(parent_row[config.sku_name_column], "")
@@ -91,7 +291,7 @@ class TestTagValidationSkuName(unittest.TestCase):
                 {
                     "field": config.sku_name_column,
                     "headerName": config.display_sku_name_column,
-                }
+                },
             ],
         )
 

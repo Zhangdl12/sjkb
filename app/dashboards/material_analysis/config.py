@@ -57,5 +57,50 @@ class AppConfig:
     aitamei_value: str = "爱他美抢量"           # 爱他美品牌的标记值
     aitamei_keyword: str = "爱他美"             # 用于判断品牌的关键词
 
+    @property
+    def required_sheets(self) -> dict[str, str]:
+        """返回素材分析需要读取的工作表映射。
+
+        Returns:
+            别名到 Excel 工作表名的映射，供公共加载器按需读取。
+        """
+        return {
+            "plan": self.plan_sheet,
+            "creative": self.creative_sheet,
+            "sku": self.sku_sheet,
+        }
+
+    @property
+    def source_usecols(self) -> dict[str, list[str]]:
+        """返回素材分析需要读取的最小列集合。
+
+        只读取计算、筛选和展示需要的字段，避免从大型 Excel 中解析无关列。
+
+        Returns:
+            别名到列名列表的映射，传给 pandas.read_excel(usecols=...)。
+        """
+        return {
+            "creative": [
+                self.date_column,
+                self.campaign_column,
+                self.plan_type_column,
+                self.sku_id_column,
+                self.impressions_column,
+                self.clicks_column,
+                self.cost_column,
+                self.gmv_column,
+                self.orders_column,
+            ],
+            "plan": [
+                self.plan_type_column,
+                self.new_product_channel_column,
+                self.channel_type_column,
+            ],
+            "sku": [
+                self.jd_sku_id_column,
+                self.category_column,
+            ],
+        }
+
 
 DEFAULT_CONFIG = AppConfig()

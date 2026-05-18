@@ -5,6 +5,14 @@ from app.dashboards.ad_summary.config import AppConfig
 
 
 def render_summary_table(title: str, df: pd.DataFrame, config: AppConfig, period: str) -> None:
+    """渲染广告汇总周期表。
+
+    Args:
+        title: 表格标题。
+        df: 已计算完成的周期汇总数据。
+        config: 广告汇总配置。
+        period: 当前周期标识，用于动态调整同比列标题。
+    """
     st.markdown(f"### {title}")
     st.dataframe(
         _build_styler(df, config),
@@ -15,10 +23,12 @@ def render_summary_table(title: str, df: pd.DataFrame, config: AppConfig, period
 
 
 def render_empty_state() -> None:
+    """渲染空数据提示。"""
     st.warning("当前筛选条件下无广告汇总数据，请放宽筛选条件。")
 
 
 def render_total_table(df: pd.DataFrame, config: AppConfig, period: str) -> None:
+    """渲染广告汇总总计表。"""
     st.dataframe(
         _build_total_styler(df, config),
         width="stretch",
@@ -28,12 +38,13 @@ def render_total_table(df: pd.DataFrame, config: AppConfig, period: str) -> None
 
 
 def _build_styler(df: pd.DataFrame, config: AppConfig):
+    """构造 Streamlit 可渲染的 Pandas Styler。"""
     ratio_columns = {
         "广告GMV贡献",
         "费比",
         "店铺完成进度",
         "PV贡献",
-        "转化率",
+        "店铺转化率",
         "消耗环比",
         "投放GMV环比",
         "店铺GMV环比",
@@ -51,11 +62,8 @@ def _build_styler(df: pd.DataFrame, config: AppConfig):
         "PV",
         config.shop_gmv_tail_column,
     }
-    decimal_columns = {"广告ROI", "人均访问数", "人均子订单量", "均单商品数", "商品单价"}
-    trend_columns = [
-        column for column in ratio_columns
-        if ("环比" in column or "同比" in column) and column in df.columns
-    ]
+    decimal_columns = {"广告ROI", "商品单价"}
+    trend_columns = [column for column in ratio_columns if ("环比" in column or "同比" in column) and column in df.columns]
 
     format_map: dict[str, object] = {}
     for column in df.columns:
@@ -66,36 +74,19 @@ def _build_styler(df: pd.DataFrame, config: AppConfig):
         elif column in number_columns:
             format_map[column] = _format_number
 
+    # 固定浅色单元格背景，避免 Streamlit 黑夜模式下 Pandas Styler 字体不可读。
     styler = (
         df.style.format(format_map, na_rep="None")
         .hide(axis="index")
-        .set_properties(**{"color": "#111111"})
+        .set_properties(**{"background-color": "#ffffff", "color": "#111111"})
         .set_properties(
             subset=pd.IndexSlice[:, [config.period_label_column]],
-            **{
-                "background-color": "#f3f4f6",
-                "color": "#111111",
-                "font-weight": "600",
-            },
+            **{"background-color": "#f3f4f6", "color": "#111111", "font-weight": "600"},
         )
         .set_table_styles(
             [
-                {
-                    "selector": "th",
-                    "props": [
-                        ("background-color", "#1f2937"),
-                        ("color", "#f9fafb"),
-                        ("font-weight", "600"),
-                    ],
-                },
-                {
-                    "selector": "th.col_heading.level0.col0",
-                    "props": [
-                        ("background-color", "#374151"),
-                        ("color", "#f9fafb"),
-                        ("font-weight", "700"),
-                    ],
-                },
+                {"selector": "th", "props": [("background-color", "#1f2937"), ("color", "#f9fafb"), ("font-weight", "600")]},
+                {"selector": "th.col_heading.level0.col0", "props": [("background-color", "#374151"), ("color", "#f9fafb"), ("font-weight", "700")]},
             ],
             overwrite=False,
         )
@@ -106,32 +97,23 @@ def _build_styler(df: pd.DataFrame, config: AppConfig):
 
 
 def _build_total_styler(df: pd.DataFrame, config: AppConfig):
+    """总计表样式在普通表基础上加粗。"""
     return _build_styler(df, config).set_properties(**{"font-weight": "700"})
 
 
 def _highlight_sections(column: pd.Series, config: AppConfig) -> list[str]:
+    """按指标分区设置底色，帮助用户横向阅读长表。"""
     if column.name in ["广告费用", "投放GMV", "店铺GMV", "广告GMV贡献", "广告ROI", "费比"]:
         return ["background-color: #fff2cc; color: #111111;"] * len(column)
     if column.name in ["消耗环比", "投放GMV环比", "店铺GMV环比", "ROI环比", "费比环比", "店铺GMV目标", "店铺完成进度"]:
         return ["background-color: #d9e2f3; color: #111111;"] * len(column)
-    if column.name in [
-        "广告点击",
-        "广告点击季度同比",
-        "PV贡献",
-        "PV",
-        "人均访问数",
-        "转化率",
-        "人均子订单量",
-        "均单商品数",
-        "商品单价",
-        config.shop_gmv_tail_column,
-        config.shop_gmv_ratio_tail_column,
-    ]:
+    if column.name in ["广告点击", "广告点击季度同比", "PV贡献", "PV", "店铺转化率", "商品单价", config.shop_gmv_tail_column, config.shop_gmv_ratio_tail_column]:
         return ["background-color: #e2f0d9; color: #111111;"] * len(column)
     return [""] * len(column)
 
 
 def _trend_text_color(value: float) -> str:
+    """环比/同比正负值着色。"""
     if pd.isna(value):
         return "color: #111111;"
     try:
@@ -146,14 +128,12 @@ def _trend_text_color(value: float) -> str:
 
 
 def _get_height(df: pd.DataFrame) -> int:
+    """根据行数给表格设置合理高度。"""
     return min(900, max(220, 35 * (len(df) + 1)))
 
 
-def _get_column_config(
-    df: pd.DataFrame,
-    config: AppConfig,
-    period: str,
-) -> dict[str, st.column_config.Column]:
+def _get_column_config(df: pd.DataFrame, config: AppConfig, period: str) -> dict[str, st.column_config.Column]:
+    """返回 Streamlit 表格列名覆盖配置。"""
     column_config: dict[str, st.column_config.Column] = {}
     if "广告点击季度同比" in df.columns:
         column_config["广告点击季度同比"] = st.column_config.NumberColumn(_get_click_yoy_label(period))
@@ -165,6 +145,7 @@ def _get_column_config(
 
 
 def _get_click_yoy_label(period: str) -> str:
+    """根据周期返回点击同比列标题。"""
     label_map = {
         "quarter": "广告点击季度同比",
         "month": "广告点击月度同比",
@@ -174,18 +155,21 @@ def _get_click_yoy_label(period: str) -> str:
 
 
 def _format_percent(value: object) -> str:
+    """百分比格式化。"""
     if pd.isna(value):
         return "None"
     return f"{float(value):.2%}"
 
 
 def _format_decimal(value: object) -> str:
+    """两位小数格式化。"""
     if pd.isna(value):
         return "None"
     return f"{float(value):.2f}"
 
 
 def _format_number(value: object) -> str:
+    """整数千分位格式化。"""
     if pd.isna(value):
         return "None"
     return f"{float(value):,.0f}"
