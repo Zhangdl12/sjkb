@@ -41,9 +41,9 @@ def build_normalized_detail(
         sku_map = _build_sku_mapping(tables["sku_tag"], config)
         frames = [
             _build_station_rows(tables["station"], channel_map, sku_map, config),
-            _build_fixed_ad_rows(tables["brand"], "品专", _brand_metric_map(config), config),
-            _build_cps_rows(tables["cps"], sku_map, config),
-            _build_fixed_ad_rows(tables["sitewide"], "全站营销", _sitewide_metric_map(config), config),
+            _build_brand_rows(tables["brand"], channel_map, config),
+            _build_cps_rows(tables["cps"], channel_map, sku_map, config),
+            _build_sitewide_rows(tables["sitewide"], channel_map, config),
             _build_shop_rows(tables["shop"], sku_map, config),
         ]
         result_df = pd.concat(frames, ignore_index=True)
@@ -129,23 +129,8 @@ def _build_station_rows(
     rows[config.ad_sku_id_column] = normalize_key(df[config.station_sku_column])
     rows = _merge_sku_tags(rows, sku_map, df[config.station_sku_name_column], config)
 
-    # 营销场景只在站内外数据源中存在，因此只对这类数据走渠道打标。
     rows["_scene_key"] = normalize_key(df[config.station_scene_column])
-    rows = rows.merge(channel_map, on="_scene_key", how="left", suffixes=("", "_tag"))
-    for column in [config.plan_aggregate_column, config.new_channel_column, config.channel_type_column]:
-        # 站内外广告的渠道维度来自渠道打标表，必须写回原始维度列，
-        # 否则后续筛选器和汇总表会把这部分数据归入空白项。
-        rows[column] = rows[f"{column}_tag"].where(rows[f"{column}_tag"].notna(), rows[column])
-    rows = rows.drop(
-        columns=[
-            "_scene_key",
-            config.channel_scene_column,
-            f"{config.plan_aggregate_column}_tag",
-            f"{config.new_channel_column}_tag",
-            f"{config.channel_type_column}_tag",
-        ],
-        errors="ignore",
-    )
+    rows = _merge_channel_tags(rows, channel_map, config)
     _copy_metric(rows, df, config.station_cost_column, config.ad_cost_column)
     _copy_metric(rows, df, config.station_impression_column, config.ad_impression_column)
     _copy_metric(rows, df, config.station_click_column, config.ad_click_column)
@@ -156,36 +141,48 @@ def _build_station_rows(
     return rows
 
 
-def _build_fixed_ad_rows(
+def _build_brand_rows(
     df: pd.DataFrame,
-    label: str,
-    metric_map: dict[str, str],
+    channel_map: pd.DataFrame,
     config: AppConfig,
 ) -> pd.DataFrame:
-    """归一化没有独立商品标签的广告来源。
+    """归一化品专数据，并通过合成营销场景关联渠道打标。
 
     Args:
-        df: 品专或全站营销数据源。
-        label: 固定渠道标签，例如“品专”或“全站营销”。
-        metric_map: 归一化字段到原始字段的映射。
+        df: 品专数据源。
+        channel_map: 渠道打标映射。
         config: 广告汇总字段配置。
 
     Returns:
-        统一字段的广告明细。
+        统一字段的品专广告明细。
     """
     rows = _empty_normalized_frame(df, config, config.ad_source_type)
-    rows[config.date_column] = parse_date(df[metric_map[config.date_column]])
-    rows[config.plan_aggregate_column] = label
-    rows[config.new_channel_column] = label
-    rows[config.channel_type_column] = label
-    for target_column, source_column in metric_map.items():
-        if target_column != config.date_column:
-            _copy_metric(rows, df, source_column, target_column)
+    rows[config.date_column] = parse_date(df[config.brand_date_column])
+    rows["_scene_key"] = normalize_key(pd.Series(config.synthetic_brand_scene, index=df.index))
+    rows = _merge_channel_tags(rows, channel_map, config)
+    for target_column, source_column in _brand_metric_map(config).items():
+        _copy_metric(rows, df, source_column, target_column)
+    return rows
+
+
+def _build_sitewide_rows(
+    df: pd.DataFrame,
+    channel_map: pd.DataFrame,
+    config: AppConfig,
+) -> pd.DataFrame:
+    """归一化全站营销数据，并通过合成营销场景关联渠道打标。"""
+    rows = _empty_normalized_frame(df, config, config.ad_source_type)
+    rows[config.date_column] = parse_date(df[config.sitewide_date_column])
+    rows["_scene_key"] = normalize_key(pd.Series(config.synthetic_sitewide_scene, index=df.index))
+    rows = _merge_channel_tags(rows, channel_map, config)
+    for target_column, source_column in _sitewide_metric_map(config).items():
+        _copy_metric(rows, df, source_column, target_column)
     return rows
 
 
 def _build_cps_rows(
     df: pd.DataFrame,
+    channel_map: pd.DataFrame,
     sku_map: pd.DataFrame,
     config: AppConfig,
 ) -> pd.DataFrame:
@@ -203,9 +200,8 @@ def _build_cps_rows(
     rows[config.date_column] = parse_date(df[config.cps_date_column])
     rows[config.ad_sku_id_column] = normalize_key(df[config.cps_sku_column])
     rows = _merge_sku_tags(rows, sku_map, pd.Series(pd.NA, index=df.index), config)
-    rows[config.plan_aggregate_column] = "CPS"
-    rows[config.new_channel_column] = "CPS"
-    rows[config.channel_type_column] = "CPS"
+    rows["_scene_key"] = normalize_key(pd.Series(config.synthetic_cps_scene, index=df.index))
+    rows = _merge_channel_tags(rows, channel_map, config)
     _copy_metric(rows, df, config.cps_cost_column, config.ad_cost_column)
     _copy_metric(rows, df, config.cps_gmv_column, config.ad_gmv_column)
     _copy_metric(rows, df, config.cps_order_row_column, config.ad_order_row_column)
@@ -275,10 +271,34 @@ def _merge_sku_tags(
     )
 
 
+def _merge_channel_tags(
+    rows: pd.DataFrame,
+    channel_map: pd.DataFrame,
+    config: AppConfig,
+) -> pd.DataFrame:
+    """按营销场景统一写回计划聚合、新产品渠道和渠道类型。"""
+    merged_df = rows.merge(channel_map, on="_scene_key", how="left", suffixes=("", "_tag"))
+    for column in [config.plan_aggregate_column, config.new_channel_column, config.channel_type_column]:
+        # 所有广告来源统一从渠道打标表回填三列渠道维度，保证规则来源唯一。
+        merged_df[column] = merged_df[f"{column}_tag"].where(
+            merged_df[f"{column}_tag"].notna(),
+            merged_df[column],
+        )
+    return merged_df.drop(
+        columns=[
+            "_scene_key",
+            config.channel_scene_column,
+            f"{config.plan_aggregate_column}_tag",
+            f"{config.new_channel_column}_tag",
+            f"{config.channel_type_column}_tag",
+        ],
+        errors="ignore",
+    )
+
+
 def _brand_metric_map(config: AppConfig) -> dict[str, str]:
     """返回品专来源字段映射。"""
     return {
-        config.date_column: config.brand_date_column,
         config.ad_cost_column: config.brand_cost_column,
         config.ad_impression_column: config.brand_impression_column,
         config.ad_click_column: config.brand_click_column,
@@ -291,7 +311,6 @@ def _brand_metric_map(config: AppConfig) -> dict[str, str]:
 def _sitewide_metric_map(config: AppConfig) -> dict[str, str]:
     """返回全站营销来源字段映射。"""
     return {
-        config.date_column: config.sitewide_date_column,
         config.ad_cost_column: config.sitewide_cost_column,
         config.ad_impression_column: config.sitewide_impression_column,
         config.ad_click_column: config.sitewide_click_column,

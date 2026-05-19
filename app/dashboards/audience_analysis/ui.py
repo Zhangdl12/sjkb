@@ -1,17 +1,16 @@
-"""渠道分析页面 AgGrid 渲染函数。
+"""人群分析页面 AgGrid 渲染函数。"""
 
-本模块只负责把已经汇总好的小表渲染为普通 AgGrid 或树形 AgGrid。
-指标计算和筛选逻辑放在 metrics/service 中，避免 UI 层改变业务口径。
-"""
 import pandas as pd
 import streamlit as st
 from st_aggrid import AgGrid, DataReturnMode, GridUpdateMode, JsCode
 
-from app.dashboards.channel_analysis.config import AppConfig
 
-
-PERCENT_COLUMNS = {"花费占比%", "广告GMV占比", "ROI月环比", "广告CVR", "广告CTR", "广告加购率", "广告新客浓度"}
-INTEGER_COLUMNS = {"广告展现", "广告点击", "广告订单行", "广告新客", "广告加购数"}
+PERCENT_COLUMNS = {"花费占比%", "CTR-kw", "广告CTR", "广告CVR", "广告加购率", "广告GMV占比"}
+INTEGER_COLUMNS = {"点击数", "广告展现", "广告点击", "广告订单行", "广告新客", "广告加购数"}
+ROI_COLUMNS = {"ROI-kw", "广告ROI"}
+COST_COLUMNS = {"广告费用", "CPC-kw", "广告CPC", "广告CPA", "广告新客成本", "广告总加购成本"}
+GMV_COLUMNS = {"总订单金额", "广告GMV", "广告商品单价"}
+DIMENSION_COLUMNS = {"人群分类", "人群名称", "月", "周", "日"}
 
 THOUSAND_FORMATTER = JsCode(
     """
@@ -77,97 +76,46 @@ PERCENT_TOOLTIP = JsCode(
     """
 )
 
-ROI_CHANGE_STYLE = JsCode(
-    """
-    function(params) {
-        const value = Number(params.value || 0);
-        if (value > 0) {
-            return {'color': '#0f7b3a', 'fontWeight': '600'};
-        }
-        if (value < 0) {
-            return {'color': '#b42318', 'fontWeight': '600'};
-        }
-        return {'color': '#374151'};
-    }
-    """
-)
 
-
-def render_grid_table(title: str, df: pd.DataFrame, config: AppConfig, key: str) -> None:
-    """渲染渠道分析普通 AgGrid 表格。
+def render_classification_table(title: str, df: pd.DataFrame, key: str) -> None:
+    """渲染人群分类树形表。
 
     Args:
         title: 表格标题。
-        df: 已经汇总好的展示表。
-        config: 渠道分析配置。
-        key: Streamlit 组件 key，避免多个表格状态冲突。
+        df: 带 path 列的人群分类汇总表。
+        key: Streamlit 组件 key。
 
     Returns:
-        None
+        None。
     """
+
     st.markdown(f"### {title}")
     if df.empty:
-        render_empty_state("当前筛选条件下没有可展示的数据。")
-        return
-    _render_aggrid(df, _build_plain_grid_options(df, config), key)
-
-
-def render_channel_tree_table(title: str, df: pd.DataFrame, config: AppConfig, key: str) -> None:
-    """渲染“新产品渠道 > 月”树形 AgGrid 表。
-
-    Args:
-        title: 表格标题。
-        df: 带 path 列的新产品渠道汇总表。
-        config: 渠道分析配置。
-        key: Streamlit 组件 key，避免多个表格状态冲突。
-
-    Returns:
-        None
-    """
-    st.markdown(f"### {title}")
-    if df.empty:
-        render_empty_state("当前筛选条件下没有可展示的新产品渠道汇总数据。")
+        render_empty_state("当前筛选条件下没有可展示的人群分类数据。")
         return
     _render_aggrid(
         df,
         _build_tree_grid_options(
             df,
-            hidden_columns={"path", config.new_channel_column, config.month_label_column},
-            group_header="新产品渠道 > 月",
+            hidden_columns={"path", "人群分类", "人群名称", "月"},
+            group_header="人群分类 > 人群名称 > 月",
         ),
         key,
     )
 
 
-def render_category_tree_table(title: str, df: pd.DataFrame, config: AppConfig, key: str) -> None:
-    """渲染“品线分类 > 商品名称 > 新产品渠道 > 月”树形 AgGrid 表。
+def render_time_table(title: str, df: pd.DataFrame, key: str) -> None:
+    """渲染时间渠道树形表。
 
     Args:
         title: 表格标题。
-        df: 带 path 列的分类汇总表。
-        config: 渠道分析配置。
-        key: Streamlit 组件 key，避免多个表格状态冲突。
+        df: 带 path 列的时间渠道表。
+        key: Streamlit 组件 key。
 
     Returns:
-        None
+        None。
     """
-    st.markdown(f"### {title}")
-    if df.empty:
-        render_empty_state("当前筛选条件下没有可展示的分类汇总数据。")
-        return
-    _render_aggrid(
-        df,
-        _build_tree_grid_options(
-            df,
-            hidden_columns={"path", config.line_column, config.sku_product_name_column, config.new_channel_column, config.month_label_column},
-            group_header="品线分类 > 商品名称 > 新产品渠道 > 月",
-        ),
-        key,
-    )
 
-
-def render_time_tree_table(title: str, df: pd.DataFrame, config: AppConfig, key: str) -> None:
-    """渲染“月 > 日 > 新产品渠道”树形 AgGrid 表。"""
     st.markdown(f"### {title}")
     if df.empty:
         render_empty_state("当前筛选条件下没有可展示的时间渠道数据。")
@@ -176,53 +124,53 @@ def render_time_tree_table(title: str, df: pd.DataFrame, config: AppConfig, key:
         df,
         _build_tree_grid_options(
             df,
-            hidden_columns={"path", config.month_label_column, config.day_label_column, config.new_channel_column},
-            group_header="月 > 日 > 新产品渠道",
+            hidden_columns={"path", "人群分类", "人群名称", "周", "日"},
+            group_header="人群分类 > 人群名称 > 周 > 日",
         ),
         key,
     )
 
 
-def render_total_table(df: pd.DataFrame, config: AppConfig) -> None:
-    """渲染分类汇总总计表。
+def render_total_table(df: pd.DataFrame) -> None:
+    """渲染当前筛选范围总计行。
 
     Args:
-        df: 总计行 DataFrame。
-        config: 渠道分析配置。
+        df: 总计表。
 
     Returns:
-        None
+        None。
     """
+
     st.markdown("### 总计")
     if df.empty:
         render_empty_state("当前筛选条件下没有可展示的总计数据。")
         return
-    _render_aggrid(df, _build_plain_grid_options(df, config), "channel_analysis_total_grid", height=110)
+    _render_aggrid(df, _build_plain_grid_options(df), "audience_analysis_total_grid", height=110)
 
 
-def render_empty_state(message: str = "当前数据为空，无法展示渠道分析表。") -> None:
-    """渲染渠道分析空结果提示。
+def render_empty_state(message: str = "当前数据为空，无法展示人群分析表。") -> None:
+    """渲染空结果提示。
 
     Args:
-        message: 展示给用户的空状态说明。
+        message: 展示给用户的提示文案。
 
     Returns:
-        None
+        None。
     """
+
     st.warning(message)
 
 
-def _build_plain_grid_options(df: pd.DataFrame, config: AppConfig) -> dict:
+def _build_plain_grid_options(df: pd.DataFrame) -> dict:
     """构造普通 AgGrid 表格配置。
 
     Args:
-        df: 当前展示表，用于按实际列顺序生成列定义。
-        config: 渠道分析配置。
+        df: 当前展示表。
 
     Returns:
         AgGrid gridOptions 字典。
     """
-    _ = config
+
     return {
         "animateRows": False,
         "suppressAggFuncInHeader": True,
@@ -232,16 +180,17 @@ def _build_plain_grid_options(df: pd.DataFrame, config: AppConfig) -> dict:
 
 
 def _build_tree_grid_options(df: pd.DataFrame, hidden_columns: set[str], group_header: str) -> dict:
-    """构造分类汇总树形 AgGrid 配置。
+    """构造树形 AgGrid 表格配置。
 
     Args:
-        df: 带 path 列的树形展示表。
-        hidden_columns: 需要在树表中隐藏的路径维度列。
+        df: 带 path 列的展示表。
+        hidden_columns: 需要隐藏的维度列。
         group_header: 树列标题。
 
     Returns:
         支持 treeData 的 AgGrid gridOptions 字典。
     """
+
     return {
         "treeData": True,
         "animateRows": False,
@@ -268,19 +217,39 @@ def _build_column_def(column: str, hide: bool = False) -> dict:
     Returns:
         单列 columnDef 配置。
     """
+
     column_def: dict = {"field": column, "headerName": column, "hide": hide, "minWidth": 120}
     if column == "path":
         column_def["hide"] = True
         return column_def
     if column in PERCENT_COLUMNS:
-        # 百分比列沿用紧凑展示；小数值自动提高显示精度，tooltip 提供完整可核对数值。
-        column_def.update({"type": "numericColumn", "width": 130, "valueFormatter": PERCENT_FORMATTER, "tooltipValueGetter": PERCENT_TOOLTIP})
+        # 百分比主显示保持紧凑；当数值过小时自动增加小数位，悬停 tooltip 展示完整百分比。
+        column_def.update(
+            {
+                "type": "numericColumn",
+                "width": 130,
+                "valueFormatter": PERCENT_FORMATTER,
+                "tooltipValueGetter": PERCENT_TOOLTIP,
+            }
+        )
     elif column in INTEGER_COLUMNS:
-        column_def.update({"type": "numericColumn", "width": 120, "valueFormatter": INTEGER_FORMATTER, "tooltipValueGetter": NUMBER_TOOLTIP})
-    elif column.startswith("广告") or column in {"ROI月环比"}:
-        column_def.update({"type": "numericColumn", "width": 130, "valueFormatter": THOUSAND_FORMATTER, "tooltipValueGetter": NUMBER_TOOLTIP})
-    if column == "ROI月环比":
-        column_def["cellStyle"] = ROI_CHANGE_STYLE
+        column_def.update(
+            {"type": "numericColumn", "width": 120, "valueFormatter": INTEGER_FORMATTER, "tooltipValueGetter": NUMBER_TOOLTIP}
+        )
+    elif column in ROI_COLUMNS:
+        column_def.update(
+            {"type": "numericColumn", "width": 130, "valueFormatter": THOUSAND_FORMATTER, "tooltipValueGetter": NUMBER_TOOLTIP}
+        )
+    elif column in COST_COLUMNS:
+        column_def.update(
+            {"type": "numericColumn", "width": 130, "valueFormatter": THOUSAND_FORMATTER, "tooltipValueGetter": NUMBER_TOOLTIP}
+        )
+    elif column in GMV_COLUMNS:
+        column_def.update(
+            {"type": "numericColumn", "width": 140, "valueFormatter": THOUSAND_FORMATTER, "tooltipValueGetter": NUMBER_TOOLTIP}
+        )
+    if column in DIMENSION_COLUMNS and column in {"人群分类", "人群名称"}:
+        column_def["pinned"] = "left"
     return column_def
 
 
@@ -291,11 +260,12 @@ def _render_aggrid(df: pd.DataFrame, grid_options: dict, key: str, height: int |
         df: 展示 DataFrame。
         grid_options: AgGrid gridOptions 配置。
         key: Streamlit 组件 key。
-        height: 可选表格高度，未传时按行数计算并限制最大高度。
+        height: 可选表格高度。
 
     Returns:
-        None
+        None。
     """
+
     AgGrid(
         df,
         gridOptions=grid_options,
@@ -311,7 +281,7 @@ def _render_aggrid(df: pd.DataFrame, grid_options: dict, key: str, height: int |
 
 
 def _get_height(df: pd.DataFrame) -> int:
-    """根据行数计算表格高度，兼顾小表和大表虚拟滚动。
+    """根据行数计算表格高度。
 
     Args:
         df: 展示 DataFrame。
@@ -319,4 +289,5 @@ def _get_height(df: pd.DataFrame) -> int:
     Returns:
         AgGrid 高度像素值。
     """
-    return max(180, min(720, 72 + len(df) * 34))
+
+    return max(220, min(760, 72 + len(df) * 34))

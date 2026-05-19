@@ -14,7 +14,7 @@ from app.dashboards.ad_summary.metrics import (
 from app.dashboards.ad_summary.processor import build_ad_summary_dataset
 
 
-PAGE_MODULE_PATH = Path(__file__).resolve().parents[1] / "pages" / "03_广告数据汇总.py"
+PAGE_MODULE_PATH = Path(__file__).resolve().parents[1] / "pages" / "02_广告数据汇总.py"
 SPEC = importlib.util.spec_from_file_location("ad_summary_page_for_metrics", PAGE_MODULE_PATH)
 ad_summary_page = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -91,10 +91,10 @@ class TestAdSummaryMetrics(unittest.TestCase):
             ),
             "channel_tag": pd.DataFrame(
                 {
-                    cfg.channel_scene_column: ["商品推广"],
-                    cfg.plan_aggregate_column: ["搜索计划"],
-                    cfg.new_channel_column: ["搜索快车"],
-                    cfg.channel_type_column: ["搜索"],
+                    cfg.channel_scene_column: ["商品推广", "京挑客", "搜索品专", "全站营销"],
+                    cfg.plan_aggregate_column: ["搜索计划", "其他", "其他", "其他"],
+                    cfg.new_channel_column: ["搜索快车", "京挑客", "搜索品专", "全站营销"],
+                    cfg.channel_type_column: ["搜索", "CPS", "品专", "全站"],
                 }
             ),
             "sku_tag": pd.DataFrame(
@@ -112,18 +112,54 @@ class TestAdSummaryMetrics(unittest.TestCase):
         result = build_ad_summary_dataset(self._build_tables(), cfg)
 
         station_row = result[result[cfg.plan_aggregate_column] == "搜索计划"].iloc[0]
-        cps_row = result[result[cfg.new_channel_column] == "CPS"].iloc[0]
+        cps_row = result[result[cfg.new_channel_column] == "京挑客"].iloc[0]
+        brand_row = result[result[cfg.new_channel_column] == "搜索品专"].iloc[0]
+        sitewide_row = result[result[cfg.new_channel_column] == "全站营销"].iloc[0]
         shop_row = result[result[cfg.source_type_column] == cfg.shop_source_type].iloc[0]
 
         self.assertEqual(station_row[cfg.product_name_column], "商品A")
         self.assertEqual(station_row[cfg.category_column], "启护")
         self.assertEqual(station_row[cfg.brand_column], "雀巢")
         self.assertEqual(station_row[cfg.channel_type_column], "搜索")
+        self.assertEqual(station_row[cfg.new_channel_column], "搜索快车")
         self.assertEqual(cps_row[cfg.product_name_column], "商品A")
         self.assertEqual(cps_row[cfg.ad_cost_column], 8)
+        self.assertEqual(cps_row[cfg.plan_aggregate_column], "其他")
+        self.assertEqual(cps_row[cfg.channel_type_column], "CPS")
+        self.assertEqual(brand_row[cfg.plan_aggregate_column], "其他")
+        self.assertEqual(brand_row[cfg.channel_type_column], "品专")
+        self.assertEqual(sitewide_row[cfg.plan_aggregate_column], "其他")
+        self.assertEqual(sitewide_row[cfg.channel_type_column], "全站")
         self.assertEqual(shop_row[cfg.shop_gmv_column], 500)
         self.assertEqual(shop_row[cfg.year_column], 2025)
         self.assertEqual(shop_row[cfg.month_label_column], "M1")
+
+    def test_synthetic_scene_sources_take_channel_values_from_tag_sheet(self) -> None:
+        cfg = self.config
+        tables = self._build_tables()
+        tables["channel_tag"] = pd.DataFrame(
+            {
+                cfg.channel_scene_column: ["商品推广", "京挑客", "搜索品专", "全站营销"],
+                cfg.plan_aggregate_column: ["搜索计划", "联盟计划", "品专计划", "全站计划"],
+                cfg.new_channel_column: ["搜索快车", "京挑客渠道", "搜索品专渠道", "全站营销渠道"],
+                cfg.channel_type_column: ["搜索", "CPS渠道", "品专渠道", "全站渠道"],
+            }
+        )
+
+        result = build_ad_summary_dataset(tables, cfg)
+        cps_row = result[result[cfg.ad_cost_column] == 8].iloc[0]
+        brand_row = result[result[cfg.ad_cost_column] == 20].iloc[0]
+        sitewide_row = result[result[cfg.ad_cost_column] == 30].iloc[0]
+
+        self.assertEqual(cps_row[cfg.plan_aggregate_column], "联盟计划")
+        self.assertEqual(cps_row[cfg.new_channel_column], "京挑客渠道")
+        self.assertEqual(cps_row[cfg.channel_type_column], "CPS渠道")
+        self.assertEqual(brand_row[cfg.plan_aggregate_column], "品专计划")
+        self.assertEqual(brand_row[cfg.new_channel_column], "搜索品专渠道")
+        self.assertEqual(brand_row[cfg.channel_type_column], "品专渠道")
+        self.assertEqual(sitewide_row[cfg.plan_aggregate_column], "全站计划")
+        self.assertEqual(sitewide_row[cfg.new_channel_column], "全站营销渠道")
+        self.assertEqual(sitewide_row[cfg.channel_type_column], "全站渠道")
 
     def test_build_ad_summary_dataset_keeps_year_as_integer_with_missing_dates(self) -> None:
         cfg = self.config

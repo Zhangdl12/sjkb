@@ -77,11 +77,14 @@ def main() -> None:
 
     # ========== 4. 选择检验类型 ==========
     # 这里仍使用单选而不是 st.tabs，避免 Streamlit 同时渲染三个大型 AgGrid。
+    if "tag_validation_type_radio" not in st.session_state:
+        st.session_state["tag_validation_type_radio"] = "关键词标签检验"
     validation_type = st.radio(
         "选择标签检验类型",
         ["关键词标签检验", "人群标签检验", "SKU标签检验"],
         horizontal=True,
         label_visibility="collapsed",
+        key="tag_validation_type_radio",
     )
 
     # ========== 5. 按当前类型渲染已缓存的树表 ==========

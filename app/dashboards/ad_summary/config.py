@@ -135,6 +135,9 @@ class AppConfig:
     # ===== 尾部重复展示列，内部唯一命名 =====
     shop_gmv_tail_column: str = "店铺GMV_尾部"
     shop_gmv_ratio_tail_column: str = "店铺GMV环比_尾部"
+    synthetic_cps_scene: str = "京挑客"
+    synthetic_brand_scene: str = "搜索品专"
+    synthetic_sitewide_scene: str = "全站营销"
 
     blank_text: str = "(空白)"
 

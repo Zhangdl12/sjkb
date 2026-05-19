@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from app.core.filters import FilterField, apply_filters, render_sidebar_filters
+from app.core.page_state import render_page_radio
 from app.core.session_loader import load_current_source_sheets, load_current_tag_sheets
 from app.core.shared_source import (
     get_shared_source_name,
@@ -162,7 +163,13 @@ def main() -> None:
         return
 
     period_options = get_period_options()
-    selected_title = st.radio("选择汇总周期", [title for title, _ in period_options], horizontal=True)
+    selected_title = render_page_radio(
+        "选择汇总周期",
+        [title for title, _ in period_options],
+        key="ad_summary_period_radio",
+        default=period_options[0][0],
+        horizontal=True,
+    )
     period = _resolve_selected_period(selected_title, period_options)
 
     period_yoy_df = _build_period_yoy_source_df(df, selections, filter_fields, config, period)

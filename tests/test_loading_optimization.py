@@ -7,7 +7,6 @@ import pandas as pd
 from app.core.loader import load_shared_sheets
 from app.dashboards.ad_summary.config import AppConfig as AdSummaryConfig
 from app.dashboards.channel_analysis.config import AppConfig as ChannelAnalysisConfig
-from app.dashboards.material_analysis.config import AppConfig as MaterialAnalysisConfig
 
 
 class TestLoadingOptimization(unittest.TestCase):
@@ -34,29 +33,17 @@ class TestLoadingOptimization(unittest.TestCase):
         self.assertEqual(list(tables["creative"].columns), ["日期", "推广计划", "花费"])
 
     def test_dashboard_configs_declare_required_columns(self) -> None:
-        material_config = MaterialAnalysisConfig()
         ad_config = AdSummaryConfig()
         channel_config = ChannelAnalysisConfig()
 
-        self.assertEqual(
-            material_config.source_usecols["creative"],
-            [
-                material_config.date_column,
-                material_config.campaign_column,
-                material_config.plan_type_column,
-                material_config.sku_id_column,
-                material_config.impressions_column,
-                material_config.clicks_column,
-                material_config.cost_column,
-                material_config.gmv_column,
-                material_config.orders_column,
-            ],
-        )
         self.assertIn(ad_config.shop_gmv_source_column, ad_config.source_usecols["shop"])
         self.assertIn(ad_config.station_scene_column, ad_config.source_usecols["station"])
         self.assertIn(ad_config.sku_tag_id_column, ad_config.tag_usecols["sku_tag"])
         self.assertIn(ad_config.channel_scene_column, ad_config.tag_usecols["channel_tag"])
-        self.assertIn(channel_config.ad_impression_column, channel_config.source_usecols["ad"])
+        self.assertIn(channel_config.station_impression_column, channel_config.source_usecols["station"])
+        self.assertIn(channel_config.sitewide_click_column, channel_config.source_usecols["sitewide"])
+        self.assertIn(channel_config.channel_scene_column, channel_config.tag_usecols["channel_tag"])
+        self.assertIn(channel_config.sku_id_column, channel_config.tag_usecols["sku_tag"])
 
     def test_ad_summary_config_uses_new_source_sheets(self) -> None:
         ad_config = AdSummaryConfig()
